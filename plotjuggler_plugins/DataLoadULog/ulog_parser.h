@@ -90,6 +90,13 @@ public:
     bool readFromBuffer(const char* message);
   };
 
+  struct ParameterChange
+  {
+    Parameter param;
+    std::optional<uint64_t> timestamp;
+    bool is_initial;
+  };
+
   struct Format
   {
     Format() : padding(0), timestamp_idx(-1)
@@ -133,6 +140,8 @@ public:
 
   const std::vector<Parameter>& getParameters() const;
 
+  const std::vector<ParameterChange>& getParameterHistory() const;
+
   const std::map<std::string, std::string>& getInfo() const;
 
   const std::vector<MessageLog>& getLogs() const;
@@ -160,6 +169,10 @@ private:
 
   std::vector<Parameter> _parameters;
 
+  std::vector<ParameterChange> _parameter_history;
+
+  std::optional<uint64_t> _last_timestamp;
+
   std::vector<uint8_t> _read_buffer;
 
   std::streampos _data_section_start;  ///< first ADD_LOGGED_MSG message
@@ -186,4 +199,7 @@ private:
 
   char* parseSimpleDataMessage(Timeseries& timeseries, const Format* format, char* message,
                                size_t* index);
+
+  void recordParameterChange(const Parameter& param, std::optional<uint64_t> timestamp,
+                             bool is_initial);
 };

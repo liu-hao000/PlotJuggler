@@ -90,6 +90,7 @@ ULogParser::ULogParser(DataStream& datastream) : _file_start_time(0)
         msg.msg.assign(message, message_header.msg_size - 9);
         // printf("LOG %c (%ld): %s\n", msg.level, msg.timestamp, msg.msg.c_str() );
         _message_logs.push_back(std::move(msg));
+        _last_timestamp = _message_logs.back().timestamp;
       }
       break;
       case (int)ULogMessageType::SYNC:  // printf("SYNC\n" );
@@ -103,21 +104,10 @@ ULogParser::ULogParser(DataStream& datastream) : _file_start_time(0)
       case (int)ULogMessageType::PARAMETER_DEFAULT:  // printf("PARAMETER_DEFAULT\n" );
         break;
       case (int)ULogMessageType::PARAMETER:
-        Parameter new_param;
-        new_param.readFromBuffer(message);
-        bool found = false;
-        for (auto& prev_param : _parameters)
         {
-          if (prev_param.name == new_param.name)
-          {
-            prev_param = std::move(new_param);
-            found = true;
-            break;
-          }
-        }
-        if (!found)
-        {
-          _parameters.push_back(new_param);
+          Parameter new_param;
+          new_param.readFromBuffer(message);
+          recordParameterChange(new_param, _last_timestamp, false);
         }
         break;
     }
@@ -180,6 +170,7 @@ char* ULogParser::parseSimpleDataMessage(Timeseries& timeseries, const Format* f
       {
         timestamp_done = true;
         uint64_t time_val = *reinterpret_cast<uint64_t*>(message);
+        _last_timestamp = time_val;
         timeseries.timestamps.push_back(time_val);
         message += sizeof(uint64_t);
       }
@@ -249,6 +240,8 @@ char* ULogParser::parseSimpleDataMessage(Timeseries& timeseries, const Format* f
         case OTHER: {
           // recursion!!!
           auto child_format = _formats.at(field.other_type_ID);
+          uint64_t nested_time = *reinterpret_cast<uint64_t*>(message);
+          _last_timestamp = nested_time;
           message += sizeof(uint64_t);  // skip timestamp
           message = parseSimpleDataMessage(timeseries, &child_format, message, index);
         }
@@ -273,6 +266,11 @@ const std::map<std::string, ULogParser::Timeseries>& ULogParser::getTimeseriesMa
 const std::vector<ULogParser::Parameter>& ULogParser::getParameters() const
 {
   return _parameters;
+}
+
+const std::vector<ULogParser::ParameterChange>& ULogParser::getParameterHistory() const
+{
+  return _parameter_history;
 }
 
 const std::map<std::string, std::string>& ULogParser::getInfo() const
@@ -751,7 +749,7 @@ bool ULogParser::readParameter(DataStream& datastream, uint16_t msg_size)
 
   Parameter param;
   param.readFromBuffer(message);
-  _parameters.push_back(param);
+  recordParameterChange(param, _file_start_time, true);
   return true;
 }
 
@@ -828,4 +826,30 @@ bool ULogParser::Parameter::readFromBuffer(const char* message)
     throw std::runtime_error("unknown parameter type");
   }
   return true;
+}
+
+void ULogParser::recordParameterChange(const Parameter& param,
+                                       std::optional<uint64_t> timestamp,
+                                       bool is_initial)
+{
+  ParameterChange change;
+  change.param = param;
+  change.timestamp = timestamp;
+  change.is_initial = is_initial;
+  _parameter_history.push_back(change);
+
+  bool found = false;
+  for (auto& prev_param : _parameters)
+  {
+    if (prev_param.name == param.name)
+    {
+      prev_param = param;
+      found = true;
+      break;
+    }
+  }
+  if (!found)
+  {
+    _parameters.push_back(param);
+  }
 }

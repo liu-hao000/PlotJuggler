@@ -11,6 +11,7 @@ ULogParametersDialog::ULogParametersDialog(const ULogParser& parser, QWidget* pa
   ui->setupUi(this);
   QTableWidget* table_info = ui->tableWidgetInfo;
   QTableWidget* table_params = ui->tableWidgetParams;
+  QTableWidget* table_param_history = ui->tableWidgetParamHistory;
   QTableWidget* table_logs = ui->tableWidgetLogs;
 
   table_info->setRowCount(parser.getInfo().size());
@@ -35,6 +36,29 @@ ULogParametersDialog::ULogParametersDialog(const ULogParser& parser, QWidget* pa
     row++;
   }
   table_params->sortItems(0);
+
+  const auto& param_history = parser.getParameterHistory();
+  table_param_history->setRowCount(param_history.size());
+  row = 0;
+  for (const auto& change : param_history)
+  {
+    QString time_str = "-";
+    if (change.timestamp)
+    {
+      time_str = QString::number(double(*change.timestamp) / 1e6, 'f', 2);
+    }
+
+    table_param_history->setItem(row, 0, new QTableWidgetItem(time_str));
+    table_param_history->setItem(row, 1,
+                                 new QTableWidgetItem(QString::fromStdString(change.param.name)));
+    QString value_str = (change.param.val_type == ULogParser::FLOAT) ?
+                            QString::number(change.param.value.val_real) :
+                            QString::number(change.param.value.val_int);
+    table_param_history->setItem(row, 2, new QTableWidgetItem(value_str));
+    table_param_history->setItem(
+        row, 3, new QTableWidgetItem(change.is_initial ? "initial" : "change"));
+    row++;
+  }
 
   table_logs->setRowCount(parser.getLogs().size());
   row = 0;
@@ -81,6 +105,7 @@ void ULogParametersDialog::restoreSettings()
 {
   QTableWidget* table_info = ui->tableWidgetInfo;
   QTableWidget* table_params = ui->tableWidgetParams;
+  QTableWidget* table_param_history = ui->tableWidgetParamHistory;
 
   QSettings settings;
   restoreGeometry(settings.value("ULogParametersDialog/geometry").toByteArray());
@@ -88,24 +113,33 @@ void ULogParametersDialog::restoreSettings()
       settings.value("ULogParametersDialog/info/state").toByteArray());
   table_params->horizontalHeader()->restoreState(
       settings.value("ULogParametersDialog/params/state").toByteArray());
+  table_param_history->horizontalHeader()->restoreState(
+      settings.value("ULogParametersDialog/params_history/state").toByteArray());
 
   table_info->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
   table_info->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
 
   table_params->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
   table_params->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+  table_param_history->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+  table_param_history->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+  table_param_history->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+  table_param_history->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
 }
 
 ULogParametersDialog::~ULogParametersDialog()
 {
   QTableWidget* table_info = ui->tableWidgetInfo;
   QTableWidget* table_params = ui->tableWidgetParams;
+  QTableWidget* table_param_history = ui->tableWidgetParamHistory;
 
   QSettings settings;
   settings.setValue("ULogParametersDialog/geometry", this->saveGeometry());
   settings.setValue("ULogParametersDialog/info/state", table_info->horizontalHeader()->saveState());
   settings.setValue("ULogParametersDialog/params/state",
                     table_params->horizontalHeader()->saveState());
+  settings.setValue("ULogParametersDialog/params_history/state",
+                    table_param_history->horizontalHeader()->saveState());
 
   delete ui;
 }
